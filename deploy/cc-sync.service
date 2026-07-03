@@ -1,0 +1,15 @@
+[Unit]
+Description=CC Sync Server
+After=network.target
+
+[Service]
+Type=simple
+User=%USER%
+WorkingDirectory=%HOME%/cc
+ExecStart=/usr/bin/python3 -m cc.sync.http_server --port 9100
+Restart=on-failure
+RestartSec=5
+Environment=HOME=%HOME%
+
+[Install]
+WantedBy=multi-user.target

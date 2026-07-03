@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- cc▮ — block-art wordmark, phosphor cyan + hot amber on void -->
+  <rect width="32" height="32" rx="7" fill="#050a10"/>
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1.1"/>
+    </filter>
+  </defs>
+  <!-- phosphor halo -->
+  <g fill="#22d3ee" opacity="0.55" filter="url(#glow)">
+    <path d="M4 9h9v3H7v8h6v3H4z"/>
+    <path d="M15 9h9v3h-6v8h6v3h-9z"/>
+  </g>
+  <!-- solid blocks -->
+  <g fill="#22d3ee">
+    <path d="M4 9h9v3H7v8h6v3H4z"/>
+    <path d="M15 9h9v3h-6v8h6v3h-9z"/>
+  </g>
+  <!-- the cursor -->
+  <rect x="26" y="13" width="3" height="10" fill="#ffcc00"/>
+</svg>

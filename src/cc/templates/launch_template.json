@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CC: Odoo",
+            "program": "${config:cc.odooBin}",
+            "type": "debugpy",
+            "request": "launch",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "--addons-path=${config:cc.addonsPath}",
+                "-p", "${config:cc.port}",
+                "-d", "${config:cc.database}",
+                "${config:cc.initMode}", "${config:cc.modules}",
+                "--upgrade-path", "${config:cc.upgradePath}",
+                "--dev=all",
+                "--limit-time-cpu", "999999999",
+                "--limit-time-real", "999999999"
+            ]
+        },
+        {
+            "name": "CC: Odoo [test]",
+            "program": "${config:cc.odooBin}",
+            "type": "debugpy",
+            "request": "launch",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "--addons-path=${config:cc.addonsPath}",
+                "-p", "${config:cc.port}",
+                "-d", "${config:cc.database}",
+                "--test-enable",
+                "--test-tags", "${input:testTag}",
+                "--stop-after-init",
+                "--log-level", "test",
+                "--limit-time-cpu", "999999999",
+                "--limit-time-real", "999999999"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "id": "testTag",
+            "type": "promptString",
+            "description": "Test tag syntax: [-][tag][/module][:class][.method] — e.g. /sale, :TestSaleOrder, :TestSaleOrder.test_confirm, -at_install"
+        }
+    ]
+}

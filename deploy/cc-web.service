@@ -1,0 +1,21 @@
+[Unit]
+Description=CC Web Companion (Next.js)
+After=network.target cc-sync.service
+
+[Service]
+Type=simple
+User=%USER%
+WorkingDirectory=%HOME%/cc/web
+ExecStart=/usr/bin/npx next start --port 3000
+Restart=on-failure
+RestartSec=5
+Environment=HOME=%HOME%
+Environment=NODE_ENV=production
+Environment=PORT=3000
+# Deliberate trusted-LAN deployment: skips the localhost Host allowlist in
+# web/proxy.ts so other devices on the network can reach the dashboard.
+# Only run this on a private network (LAN/VPN) - there is no TLS here.
+Environment=CC_WEB_ALLOW_REMOTE=1
+
+[Install]
+WantedBy=multi-user.target

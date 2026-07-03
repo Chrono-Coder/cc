@@ -1,0 +1,15 @@
+__pycache__
+/config/
+/storage/
+/logs/
+!web/app/**/logs/
+*.log
+/.python-version
+.vscode
+cc_run_*
+.env
+*.egg-info*/
+dist/
+.coverage
+.claude/
+/tools/

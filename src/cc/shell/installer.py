@@ -1,0 +1,377 @@
+"""
+Shell integration installer for cc.
+
+Owns everything related to writing the cc shell function, the daemon
+auto-start, and the prompt-segment helper into the user's rc file.
+Currently supports zsh, bash, and fish.
+
+Used by:
+  - `cc config` wizard (the shell-integration step)
+  - `cc config shell install`
+  - `installer.sh` bootstrap (indirectly, via `_cc_internal config`)
+
+Pure functions — no Command class dependency. Callers handle the
+interactive prompting around install() themselves.
+"""
+import logging
+import os
+import subprocess
+import sys
+
+from cc.utils.constants import Constants
+
+log = logging.getLogger("CC")
+
+
+SUPPORTED_SHELLS = ("zsh", "bash", "fish")
+
+
+def detect_shell() -> str | None:
+    """Return 'zsh' / 'bash' / 'fish' / None.
+
+    Reads the parent process name first ($SHELL is the login shell, not
+    necessarily the running one), then falls back to $SHELL.
+    """
+    try:
+        ppid = os.getppid()
+        r = subprocess.run(
+            ["ps", "-p", str(ppid), "-o", "comm="],
+            capture_output=True, text=True,
+        )
+        parent = r.stdout.strip().lstrip("-").lower()
+        for shell in SUPPORTED_SHELLS:
+            if shell in parent:
+                return shell
+    except Exception:
+        pass
+    shell = os.environ.get("SHELL", "")
+    for s in SUPPORTED_SHELLS:
+        if s in shell:
+            return s
+    return None
+
+
+def is_installed(shell_type: str | None = None) -> bool:
+    """True if cc's source line is already in the relevant rc file."""
+    shell_type = shell_type or detect_shell()
+    if shell_type == "fish":
+        rc = _fish_rc_path()
+        source_line = Constants.FISH_SOURCE_LINE
+    elif shell_type in ("zsh", "bash"):
+        rc = _zsh_rc_path() if shell_type == "zsh" else _bash_rc_path()
+        source_line = Constants.SHELL_SOURCE_LINE
+    else:
+        return False
+    if not os.path.exists(rc):
+        return False
+    with open(rc, "r") as f:
+        return source_line in f.read()
+
+
+def install(shell_type: str | None = None) -> bool:
+    """Write the integration file + append the source line.
+
+    Returns True on success, False if the shell isn't supported.
+    Caller should print success/failure UX after.
+    """
+    shell_type = shell_type or detect_shell()
+    if shell_type not in SUPPORTED_SHELLS:
+        log.error(
+            f"Shell integration supports zsh, bash, and fish (detected: "
+            f"{shell_type or os.environ.get('SHELL', 'unknown')})."
+        )
+        return False
+
+    if shell_type == "fish":
+        _write_fish_file()
+        _append_fish_source_line()
+    elif shell_type == "bash":
+        _write_bash_file()
+        _append_bash_source_line()
+    else:
+        _write_zsh_file()
+        _append_zsh_source_line()
+    return True
+
+
+# ── internals ─────────────────────────────────────────────────────────
+
+
+def _cc_bin() -> str:
+    """Find _cc_internal binary. Checks venv install first, then sys.executable dir."""
+    venv_bin = os.path.join(str(Constants.USER_HOME), ".cc-cli", "venv", "bin", "_cc_internal")
+    if os.path.isfile(venv_bin):
+        return venv_bin
+    return os.path.join(os.path.dirname(sys.executable), "_cc_internal")
+
+
+def _completion_script(shell_type: str) -> str | None:
+    """Native completion script for shell_type, generated from the CLI parser.
+
+    Lazily imports Command + the emitters (needs the registered parser). Failure
+    is non-fatal — install just skips completion rather than aborting.
+    """
+    try:
+        from cc.base.command import Command
+        from cc.completion import bash as _bash
+        from cc.completion import fish as _fish
+        from cc.completion import spec as _spec
+        from cc.completion import zsh as _zsh
+
+        commands = _spec.build(Command.parser)
+        if not commands:
+            return None
+        emit = {"zsh": _zsh.render, "bash": _bash.render, "fish": _fish.render}.get(shell_type)
+        return emit(commands, str(Constants.SQLITE_DB_PATH)) if emit else None
+    except Exception as e:
+        log.debug(f"completion generation skipped: {e}")
+        return None
+
+
+def _completion_block(shell_type: str) -> str:
+    """The completion script as a block to append to the integration file."""
+    script = _completion_script(shell_type)
+    if not script:
+        return ""
+    return "\n# ── tab completion (generated from the CLI) ──────────────────\n" + script
+
+
+def _zsh_rc_path() -> str:
+    return os.path.join(str(Constants.USER_HOME), ".zshrc")
+
+
+def _bash_rc_path() -> str:
+    return os.path.join(str(Constants.USER_HOME), ".bashrc")
+
+
+def _fish_rc_path() -> str:
+    return os.path.join(str(Constants.USER_HOME), ".config", "fish", "config.fish")
+
+
+def _write_zsh_file() -> None:
+    shell_dir = os.path.dirname(Constants.SHELL_INTEGRATION_PATH)
+    os.makedirs(shell_dir, exist_ok=True)
+    cc_bin = _cc_bin()
+    content = f'''\
+# CC shell integration — auto-generated by cc config shell install
+# Do not edit manually; re-run cc config shell install to update.
+
+# ── cc wrapper ───────────────────────────────────────────────
+# Wraps _cc_internal so commands like cd, pyenv activate, and
+# switch hooks can affect the parent shell via CC_RUN_FILE.
+function cc() {{
+  mkdir -p "$HOME/.cc-cli/run"
+  local run_file="$HOME/.cc-cli/run/cc_run_$$"
+  rm -f "$run_file"
+  export CC_RUN_FILE="$run_file"
+  {cc_bin} "$@"
+  local exit_code=$?
+  if [[ -f "$run_file" ]]; then
+    source "$run_file"
+    rm -f "$run_file"
+  fi
+  return $exit_code
+}}
+
+# ── Daemon auto-start ────────────────────────────────────────
+if [[ ! -S "{Constants.SOCKET_PATH}" ]] || ! {cc_bin} daemon status --quiet &>/dev/null; then
+  {cc_bin} daemon start --quiet &>/dev/null &
+fi
+
+# ── p10k prompt segment ──────────────────────────────────────
+# Shows the single active env (the one you last switched to).
+function prompt_cc_env() {{
+  local db="{Constants.SQLITE_DB_PATH}"
+  [[ -f "$db" ]] || return
+  local env_name
+  env_name=$(sqlite3 "$db" "
+    SELECT e.name FROM app_state a
+    JOIN environment e ON e.id = a.environment_id
+    ORDER BY a.id DESC LIMIT 1
+  " 2>/dev/null)
+  [[ -n "$env_name" ]] || return
+  p10k segment -f cyan -t "$env_name"
+}}
+'''
+    content += _completion_block("zsh")
+    with open(Constants.SHELL_INTEGRATION_PATH, "w") as f:
+        f.write(content)
+    log.debug(f"Wrote shell integration to {Constants.SHELL_INTEGRATION_PATH}")
+
+
+def _write_fish_file() -> None:
+    shell_dir = os.path.dirname(Constants.FISH_INTEGRATION_PATH)
+    os.makedirs(shell_dir, exist_ok=True)
+    cc_bin = _cc_bin()
+    content = f'''\
+# CC shell integration for fish — auto-generated by cc config shell install
+# Do not edit manually; re-run cc config shell install to update.
+
+# ── cc wrapper ───────────────────────────────────────────────
+# Wraps _cc_internal so commands like cd, pyenv activate, and
+# switch hooks can affect the parent shell via CC_RUN_FILE.
+function cc
+    mkdir -p "$HOME/.cc-cli/run"
+    set -l run_file "$HOME/.cc-cli/run/cc_run_$fish_pid"
+    rm -f $run_file
+    set -x CC_RUN_FILE $run_file
+    set -x CC_FISH 1
+    {cc_bin} $argv
+    set -l exit_code $status
+    if test -f $run_file
+        source $run_file
+        rm -f $run_file
+    end
+    return $exit_code
+end
+
+# ── Daemon auto-start ────────────────────────────────────────
+if not test -S "{Constants.SOCKET_PATH}"; or not command {cc_bin} daemon status --quiet >/dev/null 2>&1
+    command {cc_bin} daemon start --quiet >/dev/null 2>&1 &
+end
+
+# ── Prompt segment ───────────────────────────────────────────
+# Prints the active cc env, e.g. "[acme_staging]". Show it by adding
+# `__cc_env_segment` to your fish_right_prompt (or fish_prompt).
+function __cc_env_segment
+    set -l db "{Constants.SQLITE_DB_PATH}"
+    test -f $db; or return
+    set -l env_name (sqlite3 $db "SELECT e.name FROM app_state a JOIN environment e ON e.id = a.environment_id ORDER BY a.id DESC LIMIT 1" 2>/dev/null)
+    test -n "$env_name"; and echo "[$env_name]"
+end
+'''
+    content += _completion_block("fish")
+    with open(Constants.FISH_INTEGRATION_PATH, "w") as f:
+        f.write(content)
+    log.debug(f"Wrote fish integration to {Constants.FISH_INTEGRATION_PATH}")
+
+
+def _write_bash_file() -> None:
+    shell_dir = os.path.dirname(Constants.SHELL_INTEGRATION_PATH)
+    os.makedirs(shell_dir, exist_ok=True)
+    cc_bin = _cc_bin()
+    bash_path = Constants.SHELL_INTEGRATION_PATH.replace("cc.zsh", "cc.bash")
+    content = f'''\
+# CC shell integration for bash — auto-generated by cc config shell install
+# Do not edit manually; re-run cc config shell install to update.
+
+# ── cc wrapper ───────────────────────────────────────────────
+function cc() {{
+  mkdir -p "$HOME/.cc-cli/run"
+  local run_file="$HOME/.cc-cli/run/cc_run_$$"
+  rm -f "$run_file"
+  export CC_RUN_FILE="$run_file"
+  {cc_bin} "$@"
+  local exit_code=$?
+  if [[ -f "$run_file" ]]; then
+    source "$run_file"
+    rm -f "$run_file"
+  fi
+  return $exit_code
+}}
+
+# ── Daemon auto-start ────────────────────────────────────────
+if [[ ! -S "{Constants.SOCKET_PATH}" ]] || ! {cc_bin} daemon status --quiet &>/dev/null; then
+  {cc_bin} daemon start --quiet &>/dev/null &
+fi
+
+# ── Prompt segment ───────────────────────────────────────────
+# Prints the active cc env, e.g. "[acme_staging] ". Show it by adding
+# $(__cc_env_segment) to your PS1, e.g.  PS1='$(__cc_env_segment)'"$PS1"
+function __cc_env_segment() {{
+  local db="{Constants.SQLITE_DB_PATH}"
+  [[ -f "$db" ]] || return
+  local env_name
+  env_name=$(sqlite3 "$db" "SELECT e.name FROM app_state a JOIN environment e ON e.id = a.environment_id ORDER BY a.id DESC LIMIT 1" 2>/dev/null)
+  [[ -n "$env_name" ]] && printf '[%s] ' "$env_name"
+}}
+'''
+    content += _completion_block("bash")
+    with open(bash_path, "w") as f:
+        f.write(content)
+    log.debug(f"Wrote bash integration to {bash_path}")
+
+
+def _append_bash_source_line() -> None:
+    bashrc = _bash_rc_path()
+    bash_path = Constants.SHELL_INTEGRATION_PATH.replace("cc.zsh", "cc.bash")
+    source_line = f'source "{bash_path}"  # cc shell integration'
+
+    content = ""
+    if os.path.exists(bashrc):
+        with open(bashrc, "r") as f:
+            content = f.read()
+
+    if source_line not in content:
+        with open(bashrc, "a") as f:
+            f.write(f"\n{source_line}\n")
+    log.debug(f"Appended source line to {bashrc}")
+
+
+def _append_zsh_source_line() -> None:
+    zshrc = _zsh_rc_path()
+    source_line = Constants.SHELL_SOURCE_LINE
+    stat_line = f"{_cc_bin()} stat -s 2>/dev/null  # cc status"
+
+    content = ""
+    if os.path.exists(zshrc):
+        with open(zshrc, "r") as f:
+            content = f.read()
+
+    # Remove any previous cc status line (stale path after Python upgrade).
+    lines = content.splitlines(keepends=True)
+    lines = [l for l in lines if "# cc status" not in l]
+    content = "".join(lines)
+
+    # Inject `cc stat -s` before p10k's instant-prompt preamble so the
+    # status line prints before p10k captures the terminal — otherwise
+    # p10k warns about console output during init.
+    p10k_marker = "p10k-instant-prompt"
+    if p10k_marker in content:
+        lines = content.splitlines(keepends=True)
+        insert_at = next(
+            (i for i, l in enumerate(lines) if p10k_marker in l), None
+        )
+        if insert_at is not None:
+            lines.insert(insert_at, f"{stat_line}\n")
+            content = "".join(lines)
+    else:
+        content += f"\n{stat_line}\n"
+
+    with open(zshrc, "w") as f:
+        f.write(content)
+    log.debug(f"Updated cc stat -s line in {zshrc}")
+
+    # Append source line at the end if not already present.
+    if source_line not in content:
+        with open(zshrc, "a") as f:
+            f.write(f"\n{source_line}\n")
+    log.debug(f"Appended source line to {zshrc}")
+
+
+def _append_fish_source_line() -> None:
+    config_fish = _fish_rc_path()
+    os.makedirs(os.path.dirname(config_fish), exist_ok=True)
+    source_line = Constants.FISH_SOURCE_LINE
+    stat_line = f"{_cc_bin()} stat -s 2>/dev/null  # cc status"
+
+    content = ""
+    if os.path.exists(config_fish):
+        with open(config_fish, "r") as f:
+            content = f.read()
+
+    # Remove any previous cc status line (stale path after Python upgrade).
+    lines = content.splitlines(keepends=True)
+    lines = [l for l in lines if "# cc status" not in l]
+    content = "".join(lines)
+
+    if stat_line not in content:
+        content += f"\n{stat_line}\n"
+
+    with open(config_fish, "w") as f:
+        f.write(content)
+
+    if source_line not in content:
+        with open(config_fish, "a") as f:
+            f.write(f"\n{source_line}\n")
+    log.debug(f"Updated fish config at {config_fish}")

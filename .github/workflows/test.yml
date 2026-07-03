@@ -1,0 +1,132 @@
+# GitHub Actions workflow for cc.
+#
+# Runs on every push and every pull request.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install cc + pytest
+        run: |
+          python -m venv ~/.cc-cli/venv
+          ~/.cc-cli/venv/bin/pip install --upgrade pip -q
+          ~/.cc-cli/venv/bin/pip install -e . -q
+          ~/.cc-cli/venv/bin/pip install -e ".[sync]" -q
+          ~/.cc-cli/venv/bin/pip install pytest -q
+
+      - name: Run tests
+        run: ~/.cc-cli/venv/bin/python -m pytest tests/ -v
+
+  install:
+    name: install
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install system deps
+        run: sudo apt-get install -y postgresql-client zsh
+
+      - name: Run installer
+        run: echo "n" | SHELL=/bin/bash ./install.sh
+
+      - name: Verify CLI
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal --version
+
+      - name: Start the daemon
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal daemon start
+          sleep 2
+          _cc_internal daemon status
+
+      - name: Exercise basic commands
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal config -l
+          _cc_internal workspace
+          _cc_internal project env list
+          _cc_internal project
+          _cc_internal rnd
+
+      - name: Shell integration (bash)
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal config shell install --shell bash --force
+          _cc_internal config shell status --shell bash
+
+      - name: Shell integration (zsh)
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal config shell install --shell zsh --force
+          _cc_internal config shell status --shell zsh
+
+      - name: Sync status
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal sync status || true
+
+      - name: cc with no args
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal
+
+      - name: Stop the daemon
+        run: |
+          export PATH="$HOME/.cc-cli/bin:$PATH"
+          _cc_internal daemon stop
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies
+        # Non-blocking: reports vulns (mostly dev deps) without failing the build.
+        continue-on-error: true
+        run: npm audit --audit-level=moderate
+
+      - name: Build
+        run: npm run build

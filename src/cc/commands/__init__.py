@@ -6,3 +6,4 @@ from . import odoo
 from . import system
 from . import intel
 from . import rnd
+from . import run

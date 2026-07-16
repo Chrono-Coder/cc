@@ -58,10 +58,11 @@ class PythonShellCommandException(ShellCommandException): ...
 _GROUP_HELP = {
     "git": "Git & GitHub workflow — branch, fetch, github, pr.",
     "config": "Configure cc — bare `cc config` opens the settings picker.",
-    "db": "Databases — use, list, drop, init, copy, restore, backup, rename, link, unlink, extend, check.",
+    "db": "Databases — create, use, list, drop, init, copy, restore, backup, rename, link, unlink, extend, check.",
     "daemon": "The cc background daemon — start, stop, restart, status, logs.",
     "project": "Projects & environments — create, list, delete, keep, env, cloc, module, open.",
     "rnd": "R&D workspaces — create, consolidate (git worktrees), project, fw (forward-ports).",
+    "run": "Run Odoo — start the active environment's server or interactive shell.",
 }
 
 

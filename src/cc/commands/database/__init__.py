@@ -5,3 +5,4 @@ from . import restore_command
 from . import backup_command
 from . import initdb_command
 from . import reset_command
+from . import create_command

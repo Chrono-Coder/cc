@@ -98,7 +98,7 @@ def get_active_database(version_id: int = None) -> Optional[str]:
 
 @rpc_method
 def get_addons_path(version_id: int = None) -> Optional[str]:
-    """Return comma-joined addons paths for the active environment, or None."""
+    """Return every addons container used by the active environment."""
     from cc.base.db import database_connection_manager
 
     with database_connection_manager():
@@ -109,10 +109,18 @@ def get_addons_path(version_id: int = None) -> Optional[str]:
         project_path = env.project_path
         candidates = [
             os.path.join(version_path, "odoo", "addons"),
+            os.path.join(version_path, "odoo", "odoo", "addons"),
             os.path.join(version_path, "enterprise"),
             os.path.join(version_path, "design-themes"),
             project_path,
         ]
+        # Project-specific shared addons (for example psae-internal) are
+        # configured during setup and must be visible to run/create commands,
+        # not only to the IDE launch configuration written by cc switch.
+        from cc.utils.helpers import Helpers
+        internal_dir = Helpers.get_internal_addons_dir()
+        if internal_dir and project_path:
+            candidates.append(os.path.join(project_path, internal_dir))
         paths = [p for p in candidates if os.path.isdir(p)]
         return ",".join(paths) if paths else None
 

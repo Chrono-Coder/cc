@@ -14,10 +14,18 @@ with no verb to see that group's help, or `cc help <command>` for any command.
 | [`cc setup`](setup.md) | First-time wizard — settings, versions, pyenv, shell, theme |
 | [`cc workspace`](workspace.md) | Manage workspaces — groups of projects sharing an Odoo version |
 
+## `cc run` — Odoo runtime
+
+| Command | Description |
+|---------|-------------|
+| [`cc run server`](run.md#start-the-server) | Start Odoo for the active environment |
+| [`cc run shell`](run.md#open-an-odoo-shell) | Open an interactive Odoo shell |
+
 ## `cc db` — Databases
 
 | Command | Description |
 |---------|-------------|
+| [`cc db create`](db/create.md) | Restore a project dump or initialize and select a fresh Odoo database |
 | [`cc db use`](db/use.md) | Set the active database for the current environment |
 | [`cc db list`](db/list.md) | List databases linked to the current environment |
 | [`cc db drop`](db/drop.md) | Drop a PostgreSQL database (local or dockerized) |

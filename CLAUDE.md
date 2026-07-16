@@ -47,7 +47,7 @@ python -m pytest tests/   # never touches real DB
 
 | File | Namespace | Purpose |
 |------|-----------|---------|
-| `environment.py` | `env` | switch, create, delete, update, toggle_pin, find, recent envs |
+| `environment.py` | `env` | switch, create, delete, update, toggle_pin, find, recent envs, checkout module reconciliation |
 | `project.py` | `project` | CRUD projects |
 | `database.py` | `database` | CRUD + lifecycle: drop/rename/copy/restore/extend/init_from_dump (all backend-routed), reconcile (PG→cache); SQL-interpolated names validated, restore verifies the template exists live before dropping |
 | `workspace.py` | `workspace` | CRUD workspaces, assign projects |

@@ -694,6 +694,40 @@ def update_modules(env_id: int, module_ids: list) -> None:
 
 
 @rpc_method
+def reconcile_modules(version_id: int = None) -> dict:
+    """Sync the active environment's module rows with its current checkout.
+
+    Existing install/upgrade/draft states are retained, newly discovered Odoo
+    modules start as draft, and rows whose manifest disappeared are removed.
+    """
+    from cc.base.db import database_connection_manager
+    from cc.utils.helpers import Helpers
+
+    with database_connection_manager():
+        env = _resolve_active_env(version_id=version_id)
+        if not env:
+            return {"added": 0, "removed": 0, "total": 0}
+
+        modules, submodules = Helpers.get_all_project_modules(env.project_path)
+        discovered = modules | submodules
+        existing = {module.name: module for module in env.module_ids}
+        added = discovered - set(existing)
+        removed = set(existing) - discovered
+
+        if added or removed:
+            env.update({
+                "module_ids": [(5, 0, 0)] + [
+                    (0, 0, {
+                        "name": name,
+                        "state": (existing[name].state or "draft") if name in existing else "draft",
+                    })
+                    for name in sorted(discovered)
+                ]
+            })
+        return {"added": len(added), "removed": len(removed), "total": len(discovered)}
+
+
+@rpc_method
 def update_branch(env_id: int, github_url: str, branch_name: str) -> None:
     """Update the github_url and branch_name on an environment record."""
     from cc.base.arm.environment import Environment

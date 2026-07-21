@@ -41,6 +41,9 @@ def test_group_keying_uses_own_attr_not_inherited():
     assert ("db", "drop") in pairs
     assert ("db", "restore") in pairs
     assert ("db", "check") in pairs
+    assert ("db", "create") in pairs
+    assert ("run", "server") in pairs
+    assert ("run", "shell") in pairs
 
 
 @pytest.fixture

@@ -403,6 +403,56 @@ def test_get_addons_path_returns_none_when_dirs_dont_exist(_db):
     assert environment.get_addons_path() is None
 
 
+def test_reconcile_modules_tracks_manifests_and_preserves_state(_db, tmp_path):
+    from cc.base.arm.setting import Setting
+    from cc.services import environment
+    from cc.utils.constants import Constants
+
+    project_path = tmp_path / "client"
+    kept = project_path / "kept_module"
+    added = project_path / "psae-internal" / "added_module"
+    ignored = project_path / "docs"
+    for path in (kept, added, ignored):
+        path.mkdir(parents=True)
+    (kept / "__manifest__.py").write_text("{}")
+    (added / "__manifest__.py").write_text("{}")
+
+    proj = _create_project()
+    created = _create_env(proj["id"])
+    environment.update(created["id"], project_path=str(project_path))
+    environment.update_modules(
+        created["id"],
+        [(5, 0, 0), (0, 0, {"name": "kept_module", "state": "upgrade"}),
+         (0, 0, {"name": "removed_module", "state": "install"})],
+    )
+    with database_connection_manager():
+        Setting.create({"name": Constants.SETTING_INTERNAL_ADDONS, "value": "psae-internal"})
+    environment.switch(created["id"])
+
+    assert environment.reconcile_modules() == {"added": 1, "removed": 1, "total": 2}
+
+    from cc.base.arm.environment import Environment
+    with database_connection_manager():
+        env = Environment.find(created["id"])
+        states = {module.name: module.state for module in env.module_ids}
+    assert states == {"added_module": "draft", "kept_module": "upgrade"}
+
+
+def test_reconcile_modules_is_idempotent(_db, tmp_path):
+    from cc.services import environment
+
+    module_path = tmp_path / "client" / "module_a"
+    module_path.mkdir(parents=True)
+    (module_path / "__manifest__.py").write_text("{}")
+    proj = _create_project()
+    created = _create_env(proj["id"])
+    environment.update(created["id"], project_path=str(tmp_path / "client"))
+    environment.switch(created["id"])
+
+    environment.reconcile_modules()
+    assert environment.reconcile_modules() == {"added": 0, "removed": 0, "total": 1}
+
+
 def test_get_status_returns_project_and_active_env(_db):
     from cc.services import environment
     from cc.services.dto import ProjectStatusDTO

@@ -1,5 +1,11 @@
 # cc stat
 
+Before displaying status, cc rescans the active project's working directory for
+Odoo modules (directories containing `__manifest__.py` or `__openerp__.py`). New
+modules are added as draft, removed modules are pruned, and existing
+install/upgrade/draft actions are preserved. The configured internal-addons
+directory is scanned as well.
+
 Show the environments for the active project.
 
 ## Usage

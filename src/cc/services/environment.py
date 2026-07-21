@@ -98,7 +98,7 @@ def get_active_database(version_id: int = None) -> Optional[str]:
 
 @rpc_method
 def get_addons_path(version_id: int = None) -> Optional[str]:
-    """Return comma-joined addons paths for the active environment, or None."""
+    """Return every addons container used by the active environment."""
     from cc.base.db import database_connection_manager
 
     with database_connection_manager():
@@ -109,10 +109,18 @@ def get_addons_path(version_id: int = None) -> Optional[str]:
         project_path = env.project_path
         candidates = [
             os.path.join(version_path, "odoo", "addons"),
+            os.path.join(version_path, "odoo", "odoo", "addons"),
             os.path.join(version_path, "enterprise"),
             os.path.join(version_path, "design-themes"),
             project_path,
         ]
+        # Project-specific shared addons (for example psae-internal) are
+        # configured during setup and must be visible to run/create commands,
+        # not only to the IDE launch configuration written by cc switch.
+        from cc.utils.helpers import Helpers
+        internal_dir = Helpers.get_internal_addons_dir()
+        if internal_dir and project_path:
+            candidates.append(os.path.join(project_path, internal_dir))
         paths = [p for p in candidates if os.path.isdir(p)]
         return ",".join(paths) if paths else None
 
@@ -683,6 +691,40 @@ def update_modules(env_id: int, module_ids: list) -> None:
             raise NotFoundError(f"Environment id={env_id} not found")
         env.update({"module_ids": module_ids})
         log.debug(f"update_modules: env={env.name} modules={module_ids}")
+
+
+@rpc_method
+def reconcile_modules(version_id: int = None) -> dict:
+    """Sync the active environment's module rows with its current checkout.
+
+    Existing install/upgrade/draft states are retained, newly discovered Odoo
+    modules start as draft, and rows whose manifest disappeared are removed.
+    """
+    from cc.base.db import database_connection_manager
+    from cc.utils.helpers import Helpers
+
+    with database_connection_manager():
+        env = _resolve_active_env(version_id=version_id)
+        if not env:
+            return {"added": 0, "removed": 0, "total": 0}
+
+        modules, submodules = Helpers.get_all_project_modules(env.project_path)
+        discovered = modules | submodules
+        existing = {module.name: module for module in env.module_ids}
+        added = discovered - set(existing)
+        removed = set(existing) - discovered
+
+        if added or removed:
+            env.update({
+                "module_ids": [(5, 0, 0)] + [
+                    (0, 0, {
+                        "name": name,
+                        "state": (existing[name].state or "draft") if name in existing else "draft",
+                    })
+                    for name in sorted(discovered)
+                ]
+            })
+        return {"added": len(added), "removed": len(removed), "total": len(discovered)}
 
 
 @rpc_method

@@ -47,7 +47,7 @@ python -m pytest tests/   # never touches real DB
 
 | File | Namespace | Purpose |
 |------|-----------|---------|
-| `environment.py` | `env` | switch, create, delete, update, toggle_pin, find, recent envs |
+| `environment.py` | `env` | switch, create, delete, update, toggle_pin, find, recent envs, checkout module reconciliation |
 | `project.py` | `project` | CRUD projects |
 | `database.py` | `database` | CRUD + lifecycle: drop/rename/copy/restore/extend/init_from_dump (all backend-routed), reconcile (PG→cache); SQL-interpolated names validated, restore verifies the template exists live before dropping |
 | `workspace.py` | `workspace` | CRUD workspaces, assign projects |
@@ -120,6 +120,7 @@ group-aware `build_classes`).
 | `cc daemon` | start · stop · restart · status · logs |
 | `cc project` | create · list · delete · keep · env `<verb>` · cloc · module · open |
 | `cc rnd` | create · consolidate · project · fw |
+| `cc run` | server · shell |
 | flat | `time` (action: start/end/edit/delete/review) · sync · sh · psx · ticket · web · intel · reindex (tunnel hidden) |
 
 Source folders (`commands/<group>/`) are code organization, **not** the CLI shape:
@@ -160,7 +161,7 @@ Both the standalone command (`cc shell install`) and the wizard step
 | `AppState` | environment_id (the active env; single row by default, or one per version when `multi_version_mode` is on — 3.11) |
 | `Device` | name, api_key, last_seen_at, created_at (sync device registration) |
 | `DevicePath` | device_id, project_id, local_path (per-device project paths for sync) |
-| `Module` | name, environment_id (module rows per env) |
+| `Module` | name, state (install/upgrade/draft), environment_id (module rows per env) |
 
 DTOs (not ORM): `src/cc/services/dto.py` — `EnvStatusDTO`, `ProjectStatusDTO`,
 `EnvDetailDTO`, `SwitchResultDTO` (structured returns the CLI deserializes).

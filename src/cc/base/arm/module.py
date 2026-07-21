@@ -11,4 +11,7 @@ class Module(BaseEntity):
     _name = "module"
 
     name = Property(type=str)
+    # Per-environment action used by Odoo launch/database initialization:
+    # install | upgrade | draft. NULL from older rows is treated as draft.
+    state = Property(type=str, default="draft")
     environment_id = Property(relation="environment")

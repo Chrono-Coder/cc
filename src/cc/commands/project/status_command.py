@@ -58,8 +58,21 @@ class StatusCommand(ProjectCommand):
 
         from cc.daemon.client import call
 
+        version_id = self._version_id()
         try:
-            data = call("env.get_status", version_id=self._version_id(), verbose=bool(self.args.verbose))
+            result = call("env.reconcile_modules", version_id=version_id)
+            if result.get("added") or result.get("removed"):
+                log.debug(
+                    "Module checkout reconciled: +%s -%s",
+                    result.get("added", 0), result.get("removed", 0),
+                )
+        except Exception as e:
+            # Status remains useful even if a transient filesystem/RPC problem
+            # prevents reconciliation.
+            log.warning(f"Could not reconcile project modules: {e}")
+
+        try:
+            data = call("env.get_status", version_id=version_id, verbose=bool(self.args.verbose))
         except Exception as e:
             log.error(f"Failed to get status: {e}")
             return False

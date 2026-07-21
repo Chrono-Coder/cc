@@ -552,12 +552,26 @@ class Helpers:
         if not project_path or not os.path.isdir(project_path):
             log.warning(f"get_all_project_modules: project_path is invalid: {project_path}")
             return set(), set()
+
+        def is_odoo_module(path: str) -> bool:
+            return any(
+                os.path.isfile(os.path.join(path, manifest))
+                for manifest in ("__manifest__.py", "__openerp__.py")
+            )
+
         submodules = set()
-        main_modules = sorted(Helpers.listdir(project_path))
+        main_modules = sorted(
+            name for name in Helpers.listdir(project_path)
+            if is_odoo_module(os.path.join(project_path, name))
+        )
         internal = Helpers.get_internal_addons_dir()
-        if internal and internal in main_modules:
-            submodules = set(Helpers.listdir(project_path + f"/{internal}"))
-        return set(main_modules) - {internal}, submodules
+        internal_path = os.path.join(project_path, internal) if internal else ""
+        if internal_path and os.path.isdir(internal_path):
+            submodules = {
+                name for name in Helpers.listdir(internal_path)
+                if is_odoo_module(os.path.join(internal_path, name))
+            }
+        return set(main_modules), submodules
 
     @staticmethod
     def get_internal_addons_dir() -> str:

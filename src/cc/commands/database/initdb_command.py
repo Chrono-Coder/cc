@@ -86,7 +86,15 @@ class InitdbCommand(Command):
         console.print(f"[muted]Using dump: {db_path.name} → database: {db_name}[/]")
 
         # ── Restore ───────────────────────────────────────────────────────
-        return self._restore(db_path, db_name)
+        restored = self._restore(db_path, db_name)
+        if restored and self.active_environment:
+            call(
+                "env.use_database",
+                env_id=self.active_environment.id,
+                database_name=db_name,
+            )
+            console.print(f"[success]✓ Database '{db_name}' selected for the active environment.[/]")
+        return restored
 
     # ── Dump selection helpers ────────────────────────────────────────────
 

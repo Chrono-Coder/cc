@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.0.1
+
+- **`cc switch` project discovery no longer descends into cache directories.** Matching a project by name (e.g. `cc switch prompt`) surfaced junk paths like `.mypy_cache/3.10/prompt_toolkit` alongside the real project. Discovery now skips dotdirs (scoped to project lookup, so the `launch.json` search can still reach `.vscode/`) and bans the non-hidden vendor/cache dirs (`__pycache__`, `node_modules`, `venv`, `site-packages`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`, `.tox`, `.cache`).
+
 ## v4.0.0 — first public release
 
 cc goes public. 4.0 is the consolidation of the internal 3.1 → 3.11 line into one release: everything below this entry describes how it was built, but if you're arriving fresh, this is the version you install.

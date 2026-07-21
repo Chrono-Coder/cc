@@ -4,7 +4,7 @@ from pathlib import Path
 # THE version — single source of truth. pyproject.toml reads it statically
 # (setuptools dynamic attr), cc --version and the daemon's system.health
 # serve it from here. Bump this one line only.
-CC_VERSION = "4.0.0"
+CC_VERSION = "4.0.1"
 
 
 class Constants:

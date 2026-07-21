@@ -96,6 +96,7 @@ class Helpers:
         cutoff=0.6,
         total_cutoff=1,
         clean=False,
+        skip_hidden=False,
     ):
         """
         parent_dir: dir to search inside
@@ -152,7 +153,16 @@ class Helpers:
                     else []
                 )
                 subdirs = [
-                    entry.name for entry in os.scandir(current_dir) if entry.is_dir() and entry.name not in banned_dirs
+                    entry.name
+                    for entry in os.scandir(current_dir)
+                    if entry.is_dir()
+                    and entry.name not in banned_dirs
+                    # skip_hidden: never descend into dotdirs (.mypy_cache,
+                    # .git, .venv, .ruff_cache, …). Used by project discovery,
+                    # where a match under a cache dir is always junk. Off by
+                    # default so callers like the launch.json search can still
+                    # reach .vscode/.
+                    and not (skip_hidden and entry.name.startswith("."))
                 ]
             except PermissionError:
                 log.debug(f"Permission denied while scanning: {current_dir}")
@@ -686,6 +696,7 @@ class Helpers:
             cutoff=PROJECT_SEARCH_CUTOFF,
             n=5,
             clean=Helpers._get_clean_words(),
+            skip_hidden=True,
         )
 
         searched_paths = set()
@@ -748,6 +759,12 @@ class Helpers:
     @staticmethod
     def _get_banned_dirs():
         return {"odoo", "enterprise", "design-themes", "config_files", ".git", "logs", "views", ".vscode", "trash",
+                # Vendor / build / cache dirs that never hold a project but are
+                # deep and match loosely (e.g. .mypy_cache/3.10/prompt_toolkit
+                # matching 'prompt'). The dotted ones are also covered by
+                # skip_hidden; these catch the non-hidden ones.
+                "__pycache__", "node_modules", "venv", ".venv", "site-packages",
+                ".mypy_cache", ".pytest_cache", ".ruff_cache", ".tox", ".cache",
                 # macOS standard home subdirs that don't contain code — keeps the
                 # scanner out of TCC-protected app containers.
                 "Library", "Applications", "Music", "Pictures", "Movies", "Public", ".Trash"}
